@@ -1,0 +1,146 @@
+(1) Refatorar o modulo communication.py (soh deve conter coisas de comunicacao)
+
+(2) Melhorar os helps (incluir exit e, talvez, colocar os comandos por extenso ao inves de abreviado, pois ajuda na memorizacao/utilizacao). Raramente os bons sistemas utilizam abreviacao de comandos. Exemplo: eh "show" e não "sc". Ou ainda, "show chain", "show ip", "show port", ao inves de "sc".
+
+(3) KeepAlive: manter uma conexao aberta com o Keeper (nao fica abrindo e fechando). Na hora que o cliente more, o Keeper encerra a conexao e considera o cliente "morto".
+
+(4) Ha algo de errado com o Keeper. Se fecho o cliente e abro novamente, nao funciona, nao rola.
+
+(5) Melhorar a parte dos listen de todos os "trens". Nao deve precisar ficar trocando de porta toda hora. Configurar os sockets TCP para reutilizacao de portas (no codigo Python).
+
+(6) O keeper precisa ter dois pools de threads, uma para receber as conexoes (uma thread por conexao) e outra para realizar conexoes (uma thread por cliente).
+
+(7) O cliente eh que deve indicar para o keeper a porta que ele vai estar escutando. Eis um exemplo de codigo para pegar uma porta livre no cliente.
+
+import socket
+from contextlib import closing
+
+def find_free_port():
+    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+        s.bind(('', 0))
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        return s.getsockname()[1]
+
+def get_free_tcp_port():
+    tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    tcp.bind(('', 0))
+    addr, port = tcp.getsockname()
+    tcp.close()
+    return port
+
+def get_free_tcp_address():
+    tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    tcp.bind(('', 0))
+    host, port = tcp.getsockname()
+    tcp.close()
+    return 'tcp://{host}:{port}'.format(**locals())
+
+(8) Falha na documentacao. Tentei gerar os docs de help, mas deu alguns erros.
+
+Sistema: Ubuntu Server 16.04.4
+
+Primeiro erro:
+/bin/sh: sphinx-build: command not found
+make: *** [help] Error 127
+
+Depois de descobrir e instalar o pacote, segundo erro:
+make html
+
+Running Sphinx v1.3.6
+
+Extension error:
+Could not import extension sphinx.ext.githubpages (exception: No module named githubpages)
+Makefile:20: recipe for target 'html' failed
+make: *** [html] Error 1
+
+make text
+Running Sphinx v1.3.6
+making output directory...
+
+Extension error:
+Could not import extension sphinx.ext.githubpages (exception: No module named githubpages)
+Makefile:20: recipe for target 'text' failed
+make: *** [text] Error 1
+
+Enfim, nenhum "make X" funciona. Deveria ter um arquivo TXT com os requisitos para a geracao da documentacao.
+
+(9) O foco do arquivo README.md deveria ser o "Uso", ou seja, os tipos de entidades do sistema. Eu diria que o Keeper, por exemplo, nao eh um usuario do sistema e, sim, um servico de coordenacao. Da mesma forma, o Miner parece estar mais para um servico de mineracao do que um usuario. 
+
+Algumas questoes:
+(1) Qual a ordem de inicializacao do sistema? Primeiro o Keeper? Depois disso, nao ha mais ordem?
+(2) Quantos Miners e Traders posso inicializar simultaneamente?
+(3) Posso executar o sistema apenas localmente, na minha maquina? Que tal o README.md apresentar um exemplo simples de inicializacao e utilizacao local, utilizando apenas 127.0.0.1?
+(4) Por que nao ha scripts simples de inicializacao e execucao do sistema?
+(5) Por que o Keeper precisa ser iniciado primeiro? Por que o Trader e o Miner nao podem ficar aguardando o Keeper caso ele nao esteja ativo?
+(6) Por que nao ha scripts de testes do sistema? Scripts que rodam automaticamente os Traders e Miners do sistema.
+(7) Help do Miner esta incompleto.
+(8) O miner nao possui nenhum comando/instrucao para mostrar as transacoes assim que elas vao chegando (ou assim que novos blocos vao sendo criados).
+(9) Tanto no Trader quando no Miner, ha um delay muito grande quando digito "help". Por que isto acontece?
+(10) Por que o Trader nao possui um comando/instrucao para gerar automaticamente transacoes a cada X milisegundos, por exemplo? Ou ainda, por que o Trader nano permite ao usuario definir uma taxa de transacoes/segundo a ser gerada automaticamente?
+(11) Ha um bug no Trader. As vezes, quando o usuario pede para sair, digitando "exit" e clicando "s" (para apagar os blocos), o Trader nao finaliza. A unica forma de finalizar eh com um <Ctrl+C>. Isto significa que ha algo de errado ocorrendo no sistema. O mesmo ocorre com o Miner.
+
+
+(10) Com um Keeper, o Miner em execucao listando os usuario (um loop de "lu"), ao iniciar o Trader, ocorre eventualmente o seguinte:
+
+User detected as trader
+ip:  ('127.0.0.1', 32895)
+Server running on port 32895
+Exception in thread Thread-2:
+Traceback (most recent call last):
+  File "/usr/lib/python3.5/threading.py", line 914, in _bootstrap_inner
+    self.run()
+  File "/usr/lib/python3.5/threading.py", line 862, in run
+    self._target(*self._args, **self._kwargs)
+  File "/media/sf_vbox-shared/uniBlock/communication.py", line 394, in runMethods
+    self.getBlockChain()
+  File "/media/sf_vbox-shared/uniBlock/communication.py", line 82, in getBlockChain
+    socketClient.send(b'GetBlock')
+BrokenPipeError: [Errno 32] Broken pipe
+
+(11) Como que o sistema envia transacoes para o Miner quando ha apenas um unico Trader? O Trader simula uma transacao entre multiplos usuarios?
+
+(12) Os Heartbeat no Keeper parece que param quando o sistema esta a todo vapor, isto eh, criando transacoes e enviando para o Miner.
+
+(13) Por que eh criado toda hora um diretorio novo para o Blockchain? Por que o sistema nao verifica se ja existe um Blockchain? Por que o sistema nao utiliza um unico diretorio para o Blockchain? Por que os nomes dos diretorios sao numeros "aleatorios" que vao trocando?
+
+(14) Executando o sistema com 1 Keeper, 2 Miners e 4 Trader, algo muito anormal ocorre. Pouco a pouco, os Traders vao "se perdendo". Em pouco tempo, ha apenas um Trader funcionando como deveria (enviando transacoes) no sistema. Os outros ficam apenas recebendo mensagem de "New block added to the Blockchain!". Como nao estao mais enviando transacoes, suponho que seja do unico Trader enviando transacoes. Mesmo finalizando o Trader ativo, os outros continuam "perdidos". Muito provavelmente ha um HeisenBug no sistema! ;-)
+
+(15) Iniciando o sistema com 3 Miners, sempre um da zebra em um deles. Um deles morre antes de o sistema inicializar e funcionar. Todos os testes resultaram na mesma zebra.
+
+User detected as miner
+ip:  ('127.0.0.1', 54771)
+Server running on port 54771
+Exception in thread Thread-2:
+Traceback (most recent call last):
+  File "/usr/lib/python3.5/threading.py", line 914, in _bootstrap_inner
+    self.run()
+  File "/usr/lib/python3.5/threading.py", line 862, in run
+    self._target(*self._args, **self._kwargs)
+  File "/media/sf_vbox-shared/uniBlock/communication.py", line 172, in runMethods
+    self.getBlockChain()
+  File "/media/sf_vbox-shared/uniBlock/communication.py", line 82, in getBlockChain
+    socketClient.send(b'GetBlock')
+BrokenPipeError: [Errno 32] Broken pipe
+
+(16) Se finalizar alguns Miners/Traders, alguns Traders se perdem totalmente. Na verdade, travam total.
+
+ending the transaction to 3 Miner...
+Exception in thread Thread-2:
+Traceback (most recent call last):
+  File "/usr/lib/python3.5/threading.py", line 914, in _bootstrap_inner
+    self.run()
+  File "/usr/lib/python3.5/threading.py", line 862, in run
+    self._target(*self._args, **self._kwargs)
+  File "/media/sf_vbox-shared/uniBlock/communication.py", line 398, in runMethods
+    self.userInput() #Inicia as transações.
+  File "/media/sf_vbox-shared/uniBlock/communication.py", line 424, in userInput
+    self.sendToMiner(transaction)
+  File "/media/sf_vbox-shared/uniBlock/communication.py", line 442, in sendToMiner
+    connectionMiner.connect(miner)
+ConnectionRefusedError: [Errno 111] Connection refused
+
+(17) Em resumo, ha problemas de concorrencia e funcionamento serios no sistema, em especial quando comeca a aumentar o numero de Traders e Miners. Com 3 Miners e 4 Traders, o sistema nao funcionou nenhuma vez sem dar zebra.
+
+(18) Definir tempo para que uma carteira receba transações
+
+(19) Criar lista de carteiras e colocá-las em uma fila de execução (Controle de concorrência ao fechar carteira e criar nova. Criar lock no processo.)
